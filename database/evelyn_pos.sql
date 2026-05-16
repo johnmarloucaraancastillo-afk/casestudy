@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3308
--- Generation Time: May 15, 2026 at 04:09 PM
+-- Generation Time: May 16, 2026 at 08:37 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.1.25
 
@@ -35,18 +35,30 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `AddCategory` (IN `p_categoryName` V
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `AddCredit` (IN `p_customerID` INT, IN `p_amount` DECIMAL(10,2), IN `p_notes` VARCHAR(255), IN `p_userID` INT)   BEGIN
-  INSERT INTO customer_credit (customerID, amount, type, notes, userID) VALUES (p_customerID, p_amount, 'DEBIT', p_notes, p_userID);
-  UPDATE customer SET credit_balance = credit_balance + p_amount WHERE customerID = p_customerID;
-  SELECT 'success' AS result;
+    -- The trigger trg_after_credit_insert_update_balance handles
+    -- updating credit_balance automatically after this INSERT.
+    INSERT INTO customer_credit (customerID, amount, type, notes, userID)
+    VALUES (p_customerID, p_amount, 'DEBIT', p_notes, p_userID);
+
+    SELECT 'success' AS result;
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `AddCustomer` (IN `p_customerName` VARCHAR(100), IN `p_contactNo` VARCHAR(20), IN `p_email` VARCHAR(80), IN `p_address` VARCHAR(255))   BEGIN
-  IF p_email != '' AND EXISTS (SELECT 1 FROM customer WHERE email = p_email AND dateDeleted IS NULL) THEN
-    SELECT 'duplicate_email' AS result;
-  ELSE
-    INSERT INTO customer (customerName, contactNo, email, address) VALUES (p_customerName, p_contactNo, p_email, p_address);
-    SELECT LAST_INSERT_ID() AS customerID, 'success' AS result;
-  END IF;
+    -- Duplicate email check (if email not empty)
+    IF p_email != '' AND EXISTS (
+        SELECT 1 FROM customer WHERE email = p_email AND dateDeleted IS NULL
+    ) THEN
+        SELECT 0 AS customerID, 'duplicate_email' AS result;
+    -- Duplicate contact check
+    ELSEIF p_contactNo != '' AND EXISTS (
+        SELECT 1 FROM customer WHERE contactNo = p_contactNo AND dateDeleted IS NULL
+    ) THEN
+        SELECT 0 AS customerID, 'duplicate_contact' AS result;
+    ELSE
+        INSERT INTO customer (customerName, contactNo, email, address)
+        VALUES (p_customerName, p_contactNo, p_email, p_address);
+        SELECT LAST_INSERT_ID() AS customerID, 'success' AS result;
+    END IF;
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `AddExpense` (IN `p_expenseCategoryID` INT, IN `p_amount` DECIMAL(10,2), IN `p_description` VARCHAR(255), IN `p_expense_date` DATE, IN `p_userID` INT)   BEGIN
@@ -163,15 +175,18 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `DeleteUser` (IN `p_userID` INT, IN 
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `PayCredit` (IN `p_customerID` INT, IN `p_amount` DECIMAL(10,2), IN `p_notes` VARCHAR(255), IN `p_userID` INT)   BEGIN
-  DECLARE v_bal DECIMAL(10,2);
-  SELECT credit_balance INTO v_bal FROM customer WHERE customerID = p_customerID;
-  IF v_bal < p_amount THEN
-    SELECT 'overpayment' AS result;
-  ELSE
-    INSERT INTO customer_credit (customerID, amount, type, notes, userID) VALUES (p_customerID, p_amount, 'CREDIT', p_notes, p_userID);
-    UPDATE customer SET credit_balance = credit_balance - p_amount WHERE customerID = p_customerID;
-    SELECT 'success' AS result;
-  END IF;
+    DECLARE v_bal DECIMAL(10,2);
+    SELECT credit_balance INTO v_bal FROM customer WHERE customerID = p_customerID;
+
+    IF v_bal < p_amount THEN
+        SELECT 'insufficient_balance' AS result;
+    ELSE
+        -- The trigger handles updating credit_balance after this INSERT.
+        INSERT INTO customer_credit (customerID, amount, type, notes, userID)
+        VALUES (p_customerID, p_amount, 'CREDIT', p_notes, p_userID);
+
+        SELECT 'success' AS result;
+    END IF;
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `ProcessSale` (IN `p_userID` INT, IN `p_customerID` INT, IN `p_total_amount` DECIMAL(10,2), IN `p_discount_amount` DECIMAL(10,2), IN `p_tax_amount` DECIMAL(10,2), IN `p_payment` DECIMAL(10,2), IN `p_change_amount` DECIMAL(10,2), IN `p_payment_method` VARCHAR(20))   BEGIN
@@ -273,7 +288,7 @@ INSERT INTO `category` (`categoryID`, `categoryName`) VALUES
 CREATE TABLE `customer` (
   `customerID` int(11) NOT NULL,
   `customerName` varchar(100) NOT NULL,
-  `contactNo` varchar(20) DEFAULT NULL,
+  `contactNo` varchar(20) NOT NULL DEFAULT '',
   `email` varchar(80) DEFAULT NULL,
   `address` varchar(255) DEFAULT NULL,
   `credit_balance` decimal(10,2) NOT NULL DEFAULT 0.00,
@@ -286,7 +301,10 @@ CREATE TABLE `customer` (
 --
 
 INSERT INTO `customer` (`customerID`, `customerName`, `contactNo`, `email`, `address`, `credit_balance`, `dateCreated`, `dateDeleted`) VALUES
-(1, 'Angelyca Ramos', '', '', '', 15.00, '2026-05-15 09:17:31', NULL);
+(1, 'Angelyca Ramos', '', '', '', -149.00, '2026-05-15 09:17:31', '2026-05-15'),
+(2, 'Angelyca Ramos', '0912-345-678', '', '', 140.00, '2026-05-15 17:26:25', NULL),
+(3, 'Jay Clarence Po Ito', '09786567886', 'jay@gmail.com', '265, Brgy. Pitipiwpiw Wiw Wiw', -180.00, '2026-05-16 04:16:58', NULL),
+(4, 'Ivan Geronda', '09295602929', '', '', 0.00, '2026-05-16 04:35:41', NULL);
 
 -- --------------------------------------------------------
 
@@ -310,7 +328,23 @@ CREATE TABLE `customer_credit` (
 
 INSERT INTO `customer_credit` (`creditID`, `customerID`, `amount`, `type`, `notes`, `userID`, `dateCreated`) VALUES
 (1, 1, 65.00, 'DEBIT', 'Utang from Sale #3', 3, '2026-05-15 09:17:46'),
-(2, 1, 50.00, 'CREDIT', '', 3, '2026-05-15 09:18:00');
+(2, 1, 50.00, 'CREDIT', '', 3, '2026-05-15 09:18:00'),
+(3, 1, 15.00, 'CREDIT', '', 4, '2026-05-15 17:13:15'),
+(4, 1, 90.00, 'DEBIT', 'Utang from Sale #5', 4, '2026-05-15 17:23:06'),
+(5, 1, 65.00, 'CREDIT', '', 4, '2026-05-15 17:23:21'),
+(6, 1, 34.00, 'CREDIT', '', 4, '2026-05-15 17:23:42'),
+(7, 1, 27.00, 'DEBIT', 'Utang from Sale #6', 4, '2026-05-15 17:24:03'),
+(8, 1, 115.00, 'DEBIT', 'Utang from Sale #8', 4, '2026-05-15 17:24:57'),
+(9, 1, 200.00, 'CREDIT', '', 4, '2026-05-15 17:25:14'),
+(10, 2, 70.00, 'DEBIT', 'Utang from Sale #9', 4, '2026-05-15 17:26:39'),
+(11, 2, 35.00, 'DEBIT', 'Utang from Sale #10', 4, '2026-05-15 17:27:02'),
+(12, 2, 35.00, 'CREDIT', '', 4, '2026-05-15 17:27:22'),
+(13, 2, 70.00, 'CREDIT', '', 4, '2026-05-15 17:27:33'),
+(14, 3, 90.00, 'DEBIT', 'Utang from Sale #12', 4, '2026-05-16 04:18:41'),
+(15, 3, 180.00, 'CREDIT', '', 4, '2026-05-16 04:19:49'),
+(16, 2, 70.00, 'DEBIT', 'Utang from Sale #16', 4, '2026-05-16 05:53:26'),
+(17, 4, 100.00, 'DEBIT', 'Utang from Sale #17', 4, '2026-05-16 05:59:56'),
+(18, 4, 100.00, 'CREDIT', '', 4, '2026-05-16 06:00:06');
 
 --
 -- Triggers `customer_credit`
@@ -395,19 +429,20 @@ CREATE TABLE `product` (
 --
 
 INSERT INTO `product` (`productID`, `productName`, `barcode`, `categoryID`, `price`, `cost`, `stock_quantity`, `reorder_level`, `expiry_date`, `status`, `product_image`) VALUES
-(1, 'Coca-Cola 350ml', '8888001001', 1, 25.00, 18.00, 99, 20, '2027-01-01', 'Active', 'uploads/products/prod_6a0708533b4df.jpg'),
+(1, 'Coca-Cola 350ml', '8888001001', 1, 25.00, 18.00, 97, 20, '2027-01-01', 'Active', 'uploads/products/prod_6a0708533b4df.jpg'),
 (2, 'Royal 350ml', '8888001002', 1, 20.00, 14.00, 78, 20, '2027-01-01', 'Active', 'uploads/products/prod_6a0708a7b18bd.jpeg'),
-(3, 'Chippy Original 110g', '8888002001', 2, 30.00, 22.00, 60, 15, '2026-12-31', 'Active', 'uploads/products/prod_6a06eeb3c5229.jpg'),
-(4, 'Nova Country Cheddar 78g', '8888002002', 2, 25.00, 18.00, 50, 15, '2026-12-31', 'Active', 'uploads/products/prod_6a070879c07cd.jpg'),
-(5, '555 Sardines 155g', '8888003001', 3, 20.00, 14.00, 79, 10, '2028-06-01', 'Active', 'uploads/products/prod_6a06e624b6d15.jpg'),
-(6, 'Argentina Corned Beef 150g', '8888003002', 3, 55.00, 42.00, 37, 10, '2028-01-01', 'Active', 'uploads/products/prod_6a06e653c0d64.jpg'),
-(7, 'Pantene Shampoo 12ml', '8888004001', 4, 12.00, 8.00, 150, 25, NULL, 'Active', 'uploads/products/prod_6a07089a55a12.jpeg'),
+(3, 'Chippy Original 110g', '8888002001', 2, 30.00, 22.00, 54, 15, '2026-12-31', 'Active', 'uploads/products/prod_6a06eeb3c5229.jpg'),
+(4, 'Nova Country Cheddar 78g', '8888002002', 2, 25.00, 18.00, 46, 15, '2026-12-31', 'Active', 'uploads/products/prod_6a070879c07cd.jpg'),
+(5, '555 Sardines 155g', '8888003001', 3, 20.00, 14.00, 65, 10, '2028-06-01', 'Active', 'uploads/products/prod_6a06e624b6d15.jpg'),
+(6, 'Argentina Corned Beef 150g', '8888003002', 3, 55.00, 42.00, 21, 10, '2028-01-01', 'Active', 'uploads/products/prod_6a06e653c0d64.jpg'),
+(7, 'Pantene Shampoo 12ml', '8888004001', 4, 12.00, 8.00, 148, 25, NULL, 'Active', 'uploads/products/prod_6a07089a55a12.jpeg'),
 (8, 'Safeguard Bar Soap 55g', '8888004002', 4, 18.00, 13.00, 99, 20, NULL, 'Active', 'uploads/products/prod_6a0708c91625d.jpg'),
 (9, 'Tide Powder 55g', '8888005001', 5, 10.00, 7.00, 200, 30, NULL, 'Active', 'uploads/products/prod_6a0709145f331.jpeg'),
-(10, 'Ariel Liquid 22ml', '8888005002', 5, 15.00, 11.00, 118, 25, NULL, 'Active', 'uploads/products/prod_6a06e667ae729.jpg'),
-(11, 'Bear Brand 33g', '8888006001', 6, 20.00, 15.00, 87, 20, '2026-11-30', 'Active', 'uploads/products/prod_6a06eea9291f2.jpg'),
-(12, 'Gardenia Bread 400g', '8888007001', 7, 65.00, 52.00, 5, 10, '2026-05-20', 'Active', 'uploads/products/prod_6a0708695b0c0.jpg'),
-(13, 'Silver Swan Soy Sauce 1L', '8888008001', 8, 45.00, 35.00, 30, 10, '2027-06-01', 'Active', 'uploads/products/prod_6a0708d963075.jpg');
+(10, 'Ariel Liquid 22ml', '8888005002', 5, 15.00, 11.00, 92, 25, NULL, 'Active', 'uploads/products/prod_6a06e667ae729.jpg'),
+(11, 'Bear Brand 33g', '8888006001', 6, 20.00, 15.00, 73, 20, '2026-11-30', 'Active', 'uploads/products/prod_6a06eea9291f2.jpg'),
+(12, 'Gardenia Bread 400g', '8888007001', 7, 65.00, 52.00, 3, 10, '2026-05-20', 'Active', 'uploads/products/prod_6a0708695b0c0.jpg'),
+(13, 'Silver Swan Soy Sauce 1L', '8888008001', 8, 45.00, 35.00, 30, 10, '2027-06-01', 'Active', 'uploads/products/prod_6a0708d963075.jpg'),
+(14, 'Angelyca', '', 8, 1214.00, 144444.00, 13, 10, '2026-05-16', 'Inactive', NULL);
 
 -- --------------------------------------------------------
 
@@ -503,7 +538,20 @@ INSERT INTO `sales` (`salesID`, `userID`, `customerID`, `total_amount`, `discoun
 (1, 3, NULL, 113.00, 0.00, 0.00, 1000.00, 887.00, 'Cash', '2026-05-15 09:16:56'),
 (2, 3, NULL, 90.00, 0.00, 0.00, 100.00, 10.00, 'Cash', '2026-05-15 09:17:14'),
 (3, 3, 1, 65.00, 0.00, 0.00, 0.00, 935.00, 'Credit', '2026-05-15 09:17:46'),
-(4, 4, NULL, 90.00, 0.00, 0.00, 1000.00, 910.00, 'Cash', '2026-05-15 09:49:15');
+(4, 4, NULL, 90.00, 0.00, 0.00, 1000.00, 910.00, 'Cash', '2026-05-15 09:49:15'),
+(5, 4, 1, 90.00, 0.00, 0.00, 0.00, 10.00, 'Credit', '2026-05-15 17:23:06'),
+(6, 4, 1, 27.00, 0.00, 0.00, 0.00, 0.00, 'Credit', '2026-05-15 17:24:03'),
+(7, 4, NULL, 90.00, 0.00, 0.00, 1000.00, 910.00, 'Cash', '2026-05-15 17:24:38'),
+(8, 4, 1, 115.00, 0.00, 0.00, 0.00, 0.00, 'Credit', '2026-05-15 17:24:57'),
+(9, 4, 2, 70.00, 0.00, 0.00, 0.00, 0.00, 'Credit', '2026-05-15 17:26:39'),
+(10, 4, 2, 35.00, 0.00, 0.00, 0.00, 0.00, 'Credit', '2026-05-15 17:27:02'),
+(11, 4, 3, 88.00, 22.00, 0.00, 100.00, 12.00, 'Cash', '2026-05-16 04:17:36'),
+(12, 4, 3, 90.00, 0.00, 0.00, 0.00, 0.00, 'Credit', '2026-05-16 04:18:41'),
+(13, 3, 3, 120.00, 0.00, 0.00, 150.00, 30.00, 'GCash', '2026-05-16 04:21:44'),
+(14, 3, NULL, 75.00, 0.00, 0.00, 100.00, 25.00, 'Cash', '2026-05-16 04:34:06'),
+(15, 3, NULL, 165.00, 0.00, 0.00, 200.00, 35.00, 'Cash', '2026-05-16 04:34:37'),
+(16, 4, 2, 70.00, 0.00, 0.00, 0.00, 0.00, 'Credit', '2026-05-16 05:53:26'),
+(17, 4, 4, 100.00, 0.00, 0.00, 0.00, 0.00, 'Credit', '2026-05-16 05:59:56');
 
 -- --------------------------------------------------------
 
@@ -537,7 +585,42 @@ INSERT INTO `sales_details` (`salesDetailsID`, `salesID`, `productID`, `sold_qua
 (10, 3, 2, 1, 20.00, 20.00),
 (11, 4, 11, 1, 20.00, 20.00),
 (12, 4, 10, 1, 15.00, 15.00),
-(13, 4, 6, 1, 55.00, 55.00);
+(13, 4, 6, 1, 55.00, 55.00),
+(14, 5, 11, 1, 20.00, 20.00),
+(15, 5, 10, 1, 15.00, 15.00),
+(16, 5, 6, 1, 55.00, 55.00),
+(17, 6, 10, 1, 15.00, 15.00),
+(18, 6, 7, 1, 12.00, 12.00),
+(19, 7, 11, 1, 20.00, 20.00),
+(20, 7, 10, 1, 15.00, 15.00),
+(21, 7, 6, 1, 55.00, 55.00),
+(22, 8, 6, 1, 55.00, 55.00),
+(23, 8, 10, 4, 15.00, 60.00),
+(24, 9, 6, 1, 55.00, 55.00),
+(25, 9, 10, 1, 15.00, 15.00),
+(26, 10, 5, 1, 20.00, 20.00),
+(27, 10, 10, 1, 15.00, 15.00),
+(28, 11, 11, 2, 20.00, 40.00),
+(29, 11, 10, 1, 15.00, 15.00),
+(30, 11, 4, 1, 25.00, 25.00),
+(31, 11, 3, 1, 30.00, 30.00),
+(32, 12, 6, 1, 55.00, 55.00),
+(33, 12, 10, 1, 15.00, 15.00),
+(34, 12, 11, 1, 20.00, 20.00),
+(35, 13, 10, 1, 15.00, 15.00),
+(36, 13, 11, 1, 20.00, 20.00),
+(37, 13, 3, 1, 30.00, 30.00),
+(38, 13, 6, 1, 55.00, 55.00),
+(39, 14, 5, 1, 20.00, 20.00),
+(40, 14, 6, 1, 55.00, 55.00),
+(41, 15, 3, 1, 30.00, 30.00),
+(42, 15, 11, 1, 20.00, 20.00),
+(43, 15, 1, 1, 25.00, 25.00),
+(44, 15, 12, 1, 65.00, 65.00),
+(45, 15, 4, 1, 25.00, 25.00),
+(46, 16, 6, 1, 55.00, 55.00),
+(47, 16, 10, 1, 15.00, 15.00),
+(48, 17, 5, 5, 20.00, 100.00);
 
 --
 -- Triggers `sales_details`
@@ -687,7 +770,7 @@ CREATE TABLE `users` (
 INSERT INTO `users` (`userID`, `roleID`, `userNo`, `email`, `password`, `givenName`, `midName`, `surName`, `extName`, `gender`, `birthdate`, `civilStatus`, `contactNo`, `profile_image`, `dateCreated`, `dateDeleted`) VALUES
 (1, 1, 'EMP-0001', 'admin@7evelyn.com', '$2y$10$iNxHxWMJQh5vtClVicL2sOc8De6QKi3mNDYmkJdxrHcSZvPXCdr/a', 'Admin', NULL, 'User', NULL, 'Male', '1990-01-01', 'Single', '09000000000', NULL, '2026-05-15 09:12:52', NULL),
 (2, 3, 'EMP-0002', 'owner@gmail.com', '$2y$10$T6Wk59125D9DFacwFMoSOOwzMHxis0pUAqqLY5Ql4PqznHsgkmaAy', 'Owner', '', 'User', '', 'Female', '1985-06-15', 'Single', '09111111111', NULL, '2026-05-15 09:12:52', NULL),
-(3, 2, 'EMP-0003', 'cashier@gmail.com', '$2y$10$2j.NDo6kSUKHefN/CF4iPu4R9XF3PJvuFhYT5.q7Y7s/lwkrcYroO', 'Cashier', '', 'User', '', 'Female', '1995-03-20', 'Single', '09222222222', NULL, '2026-05-15 09:12:52', NULL),
+(3, 2, 'EMP-0003', 'cashier@gmail.com', '$2y$10$2j.NDo6kSUKHefN/CF4iPu4R9XF3PJvuFhYT5.q7Y7s/lwkrcYroO', 'Cashier', '', 'User', '', 'Female', '1995-03-20', 'Single', '09222222222', 'uploads/profiles/user_3_6a07f10bc18ca.jpg', '2026-05-15 09:12:52', NULL),
 (4, 1, 'EMP-001', 'admin@gmail.com', '$2y$10$VNlg65JuT2RWqIW3wS8taeWTCX4ftdzQVGWjMqZhXGAenfwK/LAlS', 'John Marlou', '', 'Castillo', '', 'Male', '2026-05-15', 'Single', '', 'uploads/profiles/user_4_6a07092f40006.png', '2026-05-15 09:15:43', NULL);
 
 --
@@ -816,13 +899,13 @@ ALTER TABLE `category`
 -- AUTO_INCREMENT for table `customer`
 --
 ALTER TABLE `customer`
-  MODIFY `customerID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `customerID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `customer_credit`
 --
 ALTER TABLE `customer_credit`
-  MODIFY `creditID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `creditID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
 
 --
 -- AUTO_INCREMENT for table `expense`
@@ -840,7 +923,7 @@ ALTER TABLE `expense_category`
 -- AUTO_INCREMENT for table `product`
 --
 ALTER TABLE `product`
-  MODIFY `productID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+  MODIFY `productID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
 
 --
 -- AUTO_INCREMENT for table `purchase_order`
@@ -864,13 +947,13 @@ ALTER TABLE `role`
 -- AUTO_INCREMENT for table `sales`
 --
 ALTER TABLE `sales`
-  MODIFY `salesID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `salesID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18;
 
 --
 -- AUTO_INCREMENT for table `sales_details`
 --
 ALTER TABLE `sales_details`
-  MODIFY `salesDetailsID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+  MODIFY `salesDetailsID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=49;
 
 --
 -- AUTO_INCREMENT for table `stocks`

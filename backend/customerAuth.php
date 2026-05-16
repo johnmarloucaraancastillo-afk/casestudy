@@ -2,19 +2,39 @@
 require_once 'database.php';
 require_once 'pusher-broadcast.php';
 require_once __DIR__ . '/csrf.php';
-session_start();
 csrf_verify();
 if(!isset($_SESSION['userID'])){ header("Location: ../index.php"); exit(); }
 if(!in_array($_SESSION['roleName'], ['Admin','Owner','Cashier'])){ header("Location: ../frontend/dashboard.php"); exit(); }
 
 $userID = $_SESSION['userID'];
 
+/* ── helper: check if contactNo is already in use (excludes a given customerID) ── */
+function contactExists($conn, $contactNo, $excludeID = 0){
+    if(!$contactNo) return false;
+    $stmt = $conn->prepare("SELECT customerID FROM customer WHERE contactNo = ? AND dateDeleted IS NULL AND customerID != ?");
+    $stmt->bind_param("si", $contactNo, $excludeID);
+    $stmt->execute();
+    $r = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $r !== null;
+}
+
 if(isset($_POST['customerSave'])){
     $name    = sanitize($_POST['customerName']);
     $contact = sanitize($_POST['contactNo'] ?? '');
     $email   = sanitize($_POST['email'] ?? '');
     $address = sanitize($_POST['address'] ?? '');
-    if(!$name){ header("Location: ../frontend/customer.php?emptyFields"); exit(); }
+
+    // Required: name and contact
+    if(!$name || !$contact){
+        header("Location: ../frontend/customer.php?emptyFields"); exit();
+    }
+
+    // Duplicate contact check
+    if(contactExists($conn, $contact)){
+        header("Location: ../frontend/customer.php?contactExists"); exit();
+    }
+
     $stmt = $conn->prepare("CALL AddCustomer(?,?,?,?)");
     $stmt->bind_param("ssss", $name, $contact, $email, $address);
     $stmt->execute();
@@ -30,6 +50,17 @@ if(isset($_POST['customerUpdate'])){
     $contact = sanitize($_POST['contactNo'] ?? '');
     $email   = sanitize($_POST['email'] ?? '');
     $address = sanitize($_POST['address'] ?? '');
+
+    // Required: name and contact
+    if(!$name || !$contact){
+        header("Location: ../frontend/customer.php?emptyFields"); exit();
+    }
+
+    // Duplicate contact check (exclude self)
+    if(contactExists($conn, $contact, $id)){
+        header("Location: ../frontend/customer.php?contactExists"); exit();
+    }
+
     $stmt = $conn->prepare("CALL UpdateCustomer(?,?,?,?,?)");
     $stmt->bind_param("issss", $id, $name, $contact, $email, $address);
     $stmt->execute();
@@ -56,7 +87,6 @@ if(isset($_POST['addCredit'])){
     $stmt = $conn->prepare("CALL AddCredit(?,?,?,?)");
     $stmt->bind_param("idsi", $customerID, $amount, $notes, $userID);
     $stmt->execute();
-    // Drain proc results then get updated balance
     $stmt->close();
     while($conn->more_results()){ $conn->next_result(); }
     $bq = $conn->prepare("SELECT customerName, credit_balance FROM customer WHERE customerID=?");
@@ -81,7 +111,6 @@ if(isset($_POST['payCredit'])){
     $stmt->execute();
     $r = $stmt->get_result()->fetch_assoc();
     if($r['result'] === 'insufficient_balance'){ header("Location: ../frontend/customer.php?insufficientBalance"); exit(); }
-    // Drain then get updated balance
     $stmt->close();
     while($conn->more_results()){ $conn->next_result(); }
     $bq = $conn->prepare("SELECT customerName, credit_balance FROM customer WHERE customerID=?");

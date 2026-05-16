@@ -271,7 +271,7 @@ body { background: var(--ev-bg); }
 .table th { font-size: 12.5px; white-space: nowrap; }
 .table td { font-size: 13px; vertical-align: middle; }
 .table thead[style*="ev-gradient"] th,
-thead[style*="ev-gradient"] th { color: #fff; }
+thead[style*="ev-gradient"] th { color: #000000; }
 
 /* ════════════════════════════════
    BADGES / STATUS PILLS
