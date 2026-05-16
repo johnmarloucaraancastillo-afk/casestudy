@@ -698,17 +698,33 @@ function printReceipt(){
     w.print();
 }
 
-function newSale(){
-    bootstrap.Modal.getInstance(document.getElementById('receiptModal')).hide();
+function resetPOS(){
     cart = [];
+    // Reset fields FIRST before recalc so values are correct
     document.getElementById('customerSelect').value = '';
     document.getElementById('discountSelect').value = '0';
     document.getElementById('paymentMethod').value = 'Cash';
     document.getElementById('tenderedInput').value = '';
     document.getElementById('creditWarning').style.display = 'none';
-    // Stock counts are now updated in real-time via Pusher (see realtime.js)
-    // location.reload() removed — no full-page reload needed anymore
+    // Directly zero out display elements
+    document.getElementById('subtotalDisplay').textContent = '₱0.00';
+    document.getElementById('discountDisplay').textContent = '₱0.00';
+    document.getElementById('totalDisplay').textContent    = '₱0.00';
+    document.getElementById('changeDisplay').textContent   = '₱0.00';
+    document.getElementById('processBtn').disabled = true;
+    // Then render empty cart UI
+    renderCart();
 }
+
+function newSale(){
+    bootstrap.Modal.getInstance(document.getElementById('receiptModal')).hide();
+    // resetPOS() is called by hidden.bs.modal after animation completes
+}
+
+// Auto-clear cart AFTER modal hide animation finishes
+document.getElementById('receiptModal').addEventListener('hidden.bs.modal', function(){
+    resetPOS();
+});
 
 // Quick tendered buttons helper
 document.getElementById('tenderedInput').addEventListener('keydown', e => {
