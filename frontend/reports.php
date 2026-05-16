@@ -170,8 +170,8 @@ $dateTo   = $_GET['date_to'] ?? date('Y-m-d');
         <?php while($r=$data->fetch_assoc()): ?>
         <tr><td><?php echo date('M d, Y',strtotime($r['expense_date'])); ?></td><td><span class="badge-active"><?php echo htmlspecialchars($r['categoryName']); ?></span></td><td><?php echo htmlspecialchars($r['description']??'—'); ?></td><td class="text-end"><strong>₱<?php echo number_format($r['amount'],2); ?></strong></td><td class="small text-muted"><?php echo htmlspecialchars($r['byUser']); ?></td></tr>
         <?php endwhile; ?>
-        <tr class="fw-bold table-light"><td colspan="3">Total</td><td class="text-end">₱<?php echo number_format($totalExp,2); ?></td><td></td></tr>
         </tbody>
+        <tfoot><tr class="fw-bold table-light"><td colspan="3">Total</td><td class="text-end">₱<?php echo number_format($totalExp,2); ?></td><td></td></tr></tfoot>
     </table>
     </div></div>
 

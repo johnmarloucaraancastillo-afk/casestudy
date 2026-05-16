@@ -170,8 +170,8 @@ $pos = $conn->query($sql);
 
                                 <?php if($po['status'] === 'Pending' && $_SESSION['roleName']==='Admin'): ?>
                                 <!-- Receive -->
-                                <form method="POST" action="../backend/purchaseAuth.php" class="d-inline" id="receiveForm<?php echo $po['poID']; ?>
-            <?php csrf_field(); ?>">
+                                <form method="POST" action="../backend/purchaseAuth.php" class="d-inline" id="receiveForm<?php echo $po['poID']; ?>">
+                                    <?php csrf_field(); ?>
                                     <input type="hidden" name="poID" value="<?php echo $po['poID']; ?>">
                                     <button type="button" name="receivePO" class="btn btn-sm btn-success" title="Receive PO"
                                         onclick="Swal.fire({
@@ -187,8 +187,8 @@ $pos = $conn->query($sql);
                                     </button>
                                 </form>
                                 <!-- Cancel -->
-                                <form method="POST" action="../backend/purchaseAuth.php" class="d-inline" id="cancelForm<?php echo $po['poID']; ?>
-            <?php csrf_field(); ?>">
+                                <form method="POST" action="../backend/purchaseAuth.php" class="d-inline" id="cancelForm<?php echo $po['poID']; ?>">
+                                    <?php csrf_field(); ?>
                                     <input type="hidden" name="poID" value="<?php echo $po['poID']; ?>">
                                     <button type="button" class="btn btn-sm btn-danger" title="Cancel PO"
                                         onclick="Swal.fire({

@@ -128,12 +128,12 @@ $roleFilter = in_array($_SESSION['roleName'], ['Admin','Owner']);
 </div>
 
 <script>
-$(document).ready(function(){ $('#salesTable').DataTable({pageLength:20,order:[[8,'desc'],paging:false}); });
+$(document).ready(function(){ $('#salesTable').DataTable({pageLength:20,order:[[8,'desc']],paging:false}); });
 
 function viewSaleDetails(salesID){
     $('#saleDetailModal').modal('show');
     $('#saleDetailBody').html('<div class="text-center py-4"><div class="spinner-border" style="color:#008161"></div></div>');
-    $.get('../backend/getSaleDetails.php', {salesID: salesID}, function(data){
+    $.get('getSaleDetails.php', {salesID: salesID}, function(data){
         $('#saleDetailBody').html(data);
     });
 }

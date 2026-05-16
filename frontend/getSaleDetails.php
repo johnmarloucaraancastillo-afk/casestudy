@@ -1,5 +1,5 @@
 <?php
-require_once 'database.php';
+require_once '../backend/database.php';
 session_start();
 if(!isset($_SESSION['userID'])){ exit(); }
 
